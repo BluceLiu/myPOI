@@ -1,15 +1,10 @@
-package testExport;
+package OThinker.H3.Controller.BizSys.BillManager;
 
-import java.awt.Robot;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,15 +22,15 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import OThinker.Common.DotNetToJavaStringHelper;
+import OThinker.Common.Data.DbType;
 import OThinker.Common.Data.Database.Parameter;
 import OThinker.H3.Controller.ControllerBase;
 import OThinker.H3.DataAccessLib.DB.SqlDbHelper;
 import net.sf.json.JSONArray;
-import oracle.xml.parser.v2.oraxml;
+@SuppressWarnings("serial")
 @Controller
 @RequestMapping(value = "/Portal/Bill")
 public class WyjExtractExcel extends ControllerBase {
@@ -44,22 +39,30 @@ public class WyjExtractExcel extends ControllerBase {
 			.getProperty("file.separator");
 	
 	
-	//表单提交请求，可以传递参数，在用
-	@SuppressWarnings("serial")
+	
+	/**
+	 * 违约金减免记录导出
+	 * //表单提交请求，可以传递参数，在用
+	 * @param request
+	 * @param response
+	 * @return
+	 */
 	@ResponseBody
 	@RequestMapping(value = "/Wyj2Extract",method = {RequestMethod.POST,RequestMethod.GET},  produces = "application/json; charset=UTF-8")
 	public String Extract2Excel(HttpServletRequest request, HttpServletResponse response) {
 		// 定义查询结果返回行数
+		String StartDate = request.getParameter("StartDate");// 减免类型
+		String EndDate = request.getParameter("EndDate");// 减免类型
 		String contractCode = request.getParameter("contractCode");
 		String customerID = request.getParameter("customerID");
-		String mobile = request.getParameter("mobile");
+//		String mobile = request.getParameter("mobile");
 		String companyID = request.getParameter("companyID");
 		SqlDbHelper helper = new SqlDbHelper();
 		// 定义sql语句
 		String sqlCommand = "select ROWNUM,a.ObjectID,a.ContractCode,a.ContractName,a.ProjectName,a.CustomerName,a.ExpenditureName,"
 				+"to_char(a.ReceivableDate,'yyyy-MM-dd') as ReceivableDate,to_char(a.CostDate,'yyyy-MM-dd') as CostDate,"
 				+"a.ReceivableAccount,a.HtwyjjmAccount,a.HtwyjAccount,a.YsAccount,a.ReceivedAccount,a.htwyjYqDays,"
-				+"b.PlanID,b.JmType,b.State,to_char(b.JmDate,'yyyy-MM-dd') as JmDate,b.JmBl,b.JmGdAccount,b.JmBz "
+				+"b.PlanID,b.JmType,b.State,to_char(b.JmDate,'yyyy-MM-dd') as JmDate,b.JmBl,b.JmGdAccount,b.JmBz,to_char(b.createdtime,'yyyy-MM-dd') as createdtime "
 				+" from SYS_CON_RECEIVABLEPLAN a LEFT JOIN Sys_Con_Plan_WYJJM b ON TRIM(a.OBJECTID) = TRIM(b.PLANID) "
 				+" LEFT JOIN sys_con_contractinfocustomer d ON a.cid = d.CID "
 				+" WHERE 1 = 1 AND b.OBJECTID IS NOT NULL";
@@ -81,6 +84,12 @@ public class WyjExtractExcel extends ControllerBase {
 		if (!DotNetToJavaStringHelper.isNullOrEmpty(companyID)) {
 			sqlCommand += " and a.companyID like '%" + companyID + "%'";
 		}
+		if (!DotNetToJavaStringHelper.isNullOrEmpty(StartDate)) {
+			sqlCommand += " and b.CREATEDTIME >= to_date('" + StartDate + "','yyyy-MM-dd')";
+		}
+		if (!DotNetToJavaStringHelper.isNullOrEmpty(EndDate)) {
+			sqlCommand += " and b.CREATEDTIME <= to_date('" + EndDate + "','yyyy-MM-dd')";
+		}
 		//排序
 		sqlCommand += " ORDER BY a.customerid,a.projectid,a.expenditureid,a.receivableaccount";
 		//List<Map<String, String>> getPagerListForMap
@@ -93,10 +102,13 @@ public class WyjExtractExcel extends ControllerBase {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-//		String docsPath = request.getSession().getServletContext()
-//				.getRealPath("docs");
-		String fileName = "export2007中文_" + System.currentTimeMillis() + ".xlsx";
-		
+		String fileNametemp = "导出合同违约金减免记录_" + System.currentTimeMillis() + ".xlsx";
+		String fileName = "";
+		try {
+			fileName = URLEncoder.encode(fileNametemp, "UTF-8");
+		} catch (UnsupportedEncodingException e1) {
+			e1.printStackTrace();
+		} 
 		//---------------------------------------
 		try {
 			// 输出流
@@ -110,9 +122,9 @@ public class WyjExtractExcel extends ControllerBase {
 			//填充第一行--------------------------
 			//生成第一行
 			XSSFRow row = sheet.createRow(0);
-			String[] titles = {"合同编号","合同名称","客户","项目","费项","费用日期","应收日期",
+			String[] titles = {"申请创建时间","合同编号","合同名称","客户","项目","费项","费用日期","应收日期",
 					"应收金额/元","状态","减免方式","计算截止日期","减免比例","固定减免违约金金额/元",
-					"合同违约金/元","合同违约金减免/元","减免后合同违约金/元"};
+					"合同违约金/元","合同违约金减免/元","减免后合同违约金/元","减免备注"};
 			for(int i=0;i<titles.length;i++){
                 XSSFCell cell = row.createCell(i);
                 cell.setCellStyle(headStyle);
@@ -125,28 +137,30 @@ public class WyjExtractExcel extends ControllerBase {
                 for(int j=0;j<list.size();j++){
                     //创建数据行,前面有一行,列标题行
                     XSSFRow row3 = sheet.createRow(j+1);
-                    row3.createCell(0).setCellValue(list.get(j).get("CONTRACTCODE"));
-                    row3.createCell(1).setCellValue(list.get(j).get("CONTRACTNAME"));
-                    row3.createCell(2).setCellValue(list.get(j).get("CUSTOMERNAME"));
-                    row3.createCell(3).setCellValue(list.get(j).get("PROJECTNAME"));
-                    row3.createCell(4).setCellValue(list.get(j).get("EXPENDITURENAME"));
-                    row3.createCell(5).setCellValue(list.get(j).get("COSTDATE"));
-                    row3.createCell(6).setCellValue(list.get(j).get("RECEIVABLEDATE"));
-                    row3.createCell(7).setCellValue(list.get(j).get("RECEIVABLEACCOUNT"));
+                    row3.createCell(0).setCellValue(list.get(j).get("CREATEDTIME"));
+                    row3.createCell(1).setCellValue(list.get(j).get("CONTRACTCODE"));
+                    row3.createCell(2).setCellValue(list.get(j).get("CONTRACTNAME"));
+                    row3.createCell(3).setCellValue(list.get(j).get("CUSTOMERNAME"));
+                    row3.createCell(4).setCellValue(list.get(j).get("PROJECTNAME"));
+                    row3.createCell(5).setCellValue(list.get(j).get("EXPENDITURENAME"));
+                    row3.createCell(6).setCellValue(list.get(j).get("COSTDATE"));
+                    row3.createCell(7).setCellValue(list.get(j).get("RECEIVABLEDATE"));
+                    row3.createCell(8).setCellValue(list.get(j).get("RECEIVABLEACCOUNT"));
                     String stateName = getStateName(list.get(j).get("STATE"));
-                    row3.createCell(8).setCellValue(stateName);
+                    row3.createCell(9).setCellValue(stateName);
                     String jmtypeName = getJmtypeName(list.get(j).get("JMTYPE"));
-                    row3.createCell(9).setCellValue(jmtypeName);
-                    row3.createCell(10).setCellValue(list.get(j).get("JMDATE"));
+                    row3.createCell(10).setCellValue(jmtypeName);
+                    row3.createCell(11).setCellValue(list.get(j).get("JMDATE"));
                     String jmbl = getJmbl(list.get(j).get("JMBL"));
-                    row3.createCell(11).setCellValue(jmbl);
+                    row3.createCell(12).setCellValue(jmbl);
                     String jmgdaccount = list.get(j).get("JMGDACCOUNT");
                     jmgdaccount = updateZero(jmgdaccount);
-                    row3.createCell(12).setCellValue(jmgdaccount);
+                    row3.createCell(13).setCellValue(jmgdaccount);
                     String wyjTotal = getWyjTotal(list.get(j).get("HTWYJJMACCOUNT"),list.get(j).get("HTWYJACCOUNT"));
-                    row3.createCell(13).setCellValue(wyjTotal);
-                    row3.createCell(14).setCellValue(updateZero(list.get(j).get("HTWYJJMACCOUNT")));
-                    row3.createCell(15).setCellValue(updateZero(list.get(j).get("HTWYJACCOUNT")));
+                    row3.createCell(14).setCellValue(wyjTotal);
+                    row3.createCell(15).setCellValue(updateZero(list.get(j).get("HTWYJJMACCOUNT")));
+                    row3.createCell(16).setCellValue(updateZero(list.get(j).get("HTWYJACCOUNT")));
+                    row3.createCell(17).setCellValue(list.get(j).get("JMBZ"));
                     
                 }
             }
@@ -167,10 +181,145 @@ public class WyjExtractExcel extends ControllerBase {
 		//返回结果
 		Map<String, Object> map = new HashMap<String, Object>();
 		// 把集合转换成json对象集合字符串输出到前台
+		map.put("list", list);
 		String result = JSONArray.fromObject(map).toString();
 		return result;
 	}
-	
+	/**
+	 * 账单减免记录导出
+	 * @param request
+	 * @param response
+	 * @return
+	 */
+	@ResponseBody
+	@RequestMapping(value = "/ExtractZdJm",method = {RequestMethod.POST,RequestMethod.GET},  produces = "application/json; charset=UTF-8")
+	public String ExtractZdJm(HttpServletRequest request, HttpServletResponse response) {
+		// 定义返回结果
+		List<Map<String, String>> list = new ArrayList<>();
+		// 获取前台传过来的參數
+//		String CompanyID = request.getParameter("CompanyID");//公司
+		String StartDate = request.getParameter("StartDate");// 减免类型
+		String EndDate = request.getParameter("EndDate");// 减免类型
+		SqlDbHelper helper = new SqlDbHelper();
+		// 定义sql语句
+		String sqlCommand = "SELECT "
+							+ "I_Bill_Reduction.OBJECTID, "
+							+ "I_Bill_Reduction.CONNAME, "
+							+ "I_Bill_Reduction.CONCODE, "
+							+ "I_Bill_Reduction.JMACCOUNT, "
+							+ "Ot_Instancecontext.Originatorname, "
+							+ "I_Bill_Reduction.REDUCTIONREASON, "
+							+ "Ot_Instancecontext.State, "
+							+ "to_char(Ot_Instancecontext.Starttime, 'yyyy-MM-dd') AS Starttime, "
+							+ "to_char(I_Bill_Reduction.CREATEDTIME, 'yyyy-MM-dd') AS CREATEDTIME, "
+							+ "Ot_Instancecontext.Objectid AS InstanceID "
+							+ "FROM I_Bill_Reduction "
+							+ "LEFT JOIN Ot_Instancecontext ON I_Bill_Reduction.ObjectID = Ot_Instancecontext.BizObjectID "
+							+ "WHERE 1 = 1";
+		// 如果合同不为空，则作为查询条件
+		
+//		//开始时间范围
+//		if (!DotNetToJavaStringHelper.isNullOrEmpty(StartDateA)) {
+//				sqlCommand += " and info.StartDate > = :StartDate";
+//				sqlSelectCount += " and info.StartDate > = :StartDate";
+//				Parameter para5 = new Parameter("StartDate", DbType.DateTime, StartDateA);
+//				parList.add(para5);
+//		}
+		if (!DotNetToJavaStringHelper.isNullOrEmpty(StartDate)) {
+			sqlCommand += " and I_Bill_Reduction.CREATEDTIME >= to_date('" + StartDate + "','yyyy-MM-dd')";
+		}
+		if (!DotNetToJavaStringHelper.isNullOrEmpty(EndDate)) {
+			sqlCommand += " and I_Bill_Reduction.CREATEDTIME <= to_date('" + EndDate + "','yyyy-MM-dd')";
+		}
+		//排序
+		sqlCommand += " ORDER BY Ot_Instancecontext.CREATEDTIME DESC "; 
+		try {
+			list = helper.getInfoMapList(sqlCommand, null);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		String fileNametemp = "导出账单减免记录_" + System.currentTimeMillis() + ".xlsx";
+		String fileName = "";
+		try {
+			fileName = URLEncoder.encode(fileNametemp, "UTF-8");
+		} catch (UnsupportedEncodingException e1) {
+			e1.printStackTrace();
+		} 
+		//---------------------------------------
+		try {
+			// 输出流
+			// 工作区
+			XSSFWorkbook wb = new XSSFWorkbook();
+			XSSFSheet sheet = wb.createSheet("export");
+			//头标题样式
+			XSSFCellStyle headStyle = createCellStyle(wb,(short)13);
+			//设置默认列宽
+			sheet.setDefaultColumnWidth(18);
+			//填充第一行--------------------------
+			//生成第一行
+			XSSFRow row = sheet.createRow(0);
+			String[] titles = {"申请创建时间","合同编号","合同名称","申请减免金额/元","减免原因","审批状态"};
+			for(int i=0;i<titles.length;i++){
+				XSSFCell cell = row.createCell(i);
+				cell.setCellStyle(headStyle);
+				cell.setCellValue(titles[i]);
+			}
+			//-----填充第一行END--------------------------
+			//填充数据行--------------------------
+			if(list != null){
+				System.out.println(list.size());
+				for(int j=0;j<list.size();j++){
+					//创建数据行,前面有一行,列标题行
+					XSSFRow row3 = sheet.createRow(j+1);
+					row3.createCell(0).setCellValue(list.get(j).get("STARTTIME"));
+					row3.createCell(1).setCellValue(list.get(j).get("CONCODE"));
+					row3.createCell(2).setCellValue(list.get(j).get("CONNAME"));
+					row3.createCell(3).setCellValue(list.get(j).get("JMACCOUNT"));
+					row3.createCell(4).setCellValue(list.get(j).get("REDUCTIONREASON"));
+					String Jmstate = updateJmState(list.get(j).get("STATE"));
+					row3.createCell(5).setCellValue(Jmstate);
+				}
+			}
+			
+			//填充数据行END--------------------------
+			// 清空response  
+			response.reset();  
+			response.setContentType("application/msexcel");//设置生成的文件类型  
+			response.setCharacterEncoding("UTF-8");//设置文件头编码方式和文件名  
+			response.setHeader("Content-Disposition", "attachment; filename=" + fileName);  
+			OutputStream os=response.getOutputStream();  
+			wb.write(os);  
+			os.flush();  
+			os.close();  
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		//返回结果
+		Map<String, Object> map = new HashMap<String, Object>();
+		// 把集合转换成json对象集合字符串输出到前台
+		map.put("list", list);
+		String result = JSONArray.fromObject(map).toString();
+		return result;
+	}
+	//更新减免状态
+	private String updateJmState(String string) {
+		String result = "";
+		switch (string) {
+		case "2":
+			result = "进行中";
+			break;
+		case "4":
+			result = "已审批";
+			break;
+		case "5":
+			result = "已取消";
+			break;
+		default:
+			break;
+		}
+		return result;
+	}
 	/**
 	 * 判断减免类型
 	 * @param jmtype
@@ -279,7 +428,6 @@ public class WyjExtractExcel extends ControllerBase {
     }
 	@Override
 	public String getFunctionCode() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 	//ajax请求，无法选择路径，废弃不用
